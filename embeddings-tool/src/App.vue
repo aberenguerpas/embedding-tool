@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ModelPicker from './components/ModelPicker.vue'
 import ModelRankingTable from './components/ModelRankingTable.vue'
 import OverlapMatrix from './components/OverlapMatrix.vue'
@@ -130,6 +130,7 @@ const isDownloadingModel = ref(false)
 const backendStatus = ref('unknown')
 const isCheckingBackend = ref(false)
 const monkeyTip = ref(MONKEY_TIPS[0])
+const isResultsStale = ref(false)
 
 let backendCheckTimer = null
 
@@ -169,6 +170,12 @@ function pickRandomMonkeyTip() {
   monkeyTip.value = MONKEY_TIPS[randomIndex]
 }
 
+function markResultsAsStale() {
+  if (compareOutput.value && !isRunning.value) {
+    isResultsStale.value = true
+  }
+}
+
 const backendStatusLabel = computed(() => {
   if (isCheckingBackend.value) {
     return 'Comprobando backend...'
@@ -187,10 +194,12 @@ const backendStatusLabel = computed(() => {
 
 watch(documentsText, (value) => {
   writeLocalStorageValue(STORAGE_KEYS.documents, value)
+  markResultsAsStale()
 })
 
 watch(queriesText, (value) => {
   writeLocalStorageValue(STORAGE_KEYS.queries, value)
+  markResultsAsStale()
 })
 
 watch(customModelIds, (value) => {
@@ -199,10 +208,16 @@ watch(customModelIds, (value) => {
 
 watch(selectedModelIds, (value) => {
   writeLocalStorageValue(STORAGE_KEYS.selectedModelIds, JSON.stringify(value))
+  markResultsAsStale()
+})
+
+watch(topK, () => {
+  markResultsAsStale()
 })
 
 watch(apiBaseUrl, () => {
   backendStatus.value = 'unknown'
+  markResultsAsStale()
 
   if (backendCheckTimer) {
     clearTimeout(backendCheckTimer)
@@ -285,6 +300,7 @@ function loadExampleData() {
   documentsText.value = DEFAULT_DOCUMENTS_TEXT
   queriesText.value = DEFAULT_QUERIES_TEXT
   compareOutput.value = null
+  isResultsStale.value = false
   runtimeError.value = ''
   validationMessage.value = 'Ejemplos de datasets y busquedas cargados. Listo para explorar.'
 }
@@ -313,6 +329,7 @@ async function runComparison() {
       validationMessage.value = `Top-k ajustado a ${safeTopK} porque solo hay ${documentCount.value} documentos.`
     }
 
+    isResultsStale.value = false
     pickRandomMonkeyTip()
     activeQueryIndex.value = 0
   } catch (error) {
@@ -326,6 +343,12 @@ async function runComparison() {
 onMounted(() => {
   refreshBackendStatus()
   pickRandomMonkeyTip()
+})
+
+onBeforeUnmount(() => {
+  if (backendCheckTimer) {
+    clearTimeout(backendCheckTimer)
+  }
 })
 </script>
 
@@ -482,6 +505,7 @@ onMounted(() => {
       <h2>Resultados</h2>
       <p class="results-meta">
         Se estan mostrando {{ selectedModelIds.length }} modelos seleccionados en esta comparacion.
+        <span v-if="isResultsStale" class="stale-pill">Cambios pendientes: pulsa comparar</span>
       </p>
       <SummaryBar
         :model-ids="selectedModelIds"
@@ -863,6 +887,20 @@ button:disabled {
   margin: -0.32rem 0 0;
   color: var(--text-muted);
   font-size: 0.82rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.stale-pill {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #c98a31 65%, var(--panel-border));
+  background: color-mix(in srgb, #ffe7b7 82%, white);
+  color: #75460e;
+  font-size: 0.72rem;
+  font-weight: 620;
+  padding: 0.16rem 0.5rem;
 }
 
 .query-results {

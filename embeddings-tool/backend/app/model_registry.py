@@ -50,7 +50,7 @@ class ModelRegistry:
     def download_models(self, model_ids: list[str], force_reload: bool = False) -> list[dict]:
         statuses: list[dict] = []
 
-        for model_id in model_ids:
+        for model_id in dict.fromkeys(model_ids):
             self.validate_model_id(model_id)
             already_loaded = self.is_loaded(model_id)
             self.get_or_load(model_id, force_reload=force_reload)

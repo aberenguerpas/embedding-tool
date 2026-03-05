@@ -71,7 +71,7 @@ export async function downloadModels({ baseUrl = DEFAULT_API_BASE_URL, modelIds,
 
     payload = await readResponsePayload(response)
   } catch (error) {
-    throw new Error(formatNetworkError(error, 'Model download request failed'))
+    throw new Error(formatNetworkError(error, 'Model download request failed'), { cause: error })
   }
 
   if (!response.ok) {
@@ -100,7 +100,7 @@ export async function checkBackendHealth({ baseUrl = DEFAULT_API_BASE_URL }) {
 
     payload = await readResponsePayload(response)
   } catch (error) {
-    throw new Error(formatNetworkError(error, 'Backend health check failed'))
+    throw new Error(formatNetworkError(error, 'Backend health check failed'), { cause: error })
   }
 
   if (!response.ok) {

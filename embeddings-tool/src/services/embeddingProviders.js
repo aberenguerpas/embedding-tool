@@ -98,7 +98,7 @@ export async function embedTexts({
 
     payload = await readResponsePayload(response)
   } catch (error) {
-    throw new Error(formatNetworkError(error, 'Embeddings API request failed'))
+    throw new Error(formatNetworkError(error, 'Embeddings API request failed'), { cause: error })
   }
 
   if (!response.ok) {
