@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = import.meta.env.VITE_EMBEDDINGS_API_BASE_URL ?? 'http://localhost:8000'
+const DEFAULT_API_BASE_URL = import.meta.env.VITE_EMBEDDINGS_API_BASE_URL ?? '/api'
 const DEFAULT_TIMEOUT_MS = 120000
 
 function stripTrailingSlash(url) {

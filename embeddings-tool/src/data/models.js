@@ -65,6 +65,33 @@ export const MODEL_CATALOG = [
     description: 'Retrieval rapido entrenado para ranking en buscadores.',
     promptName: null,
   },
+  {
+    id: 'google/embeddinggemma-300m',
+    label: 'embeddinggemma-300m',
+    description: 'Embedding model de Google orientado a retrieval semantico.',
+    promptName: null,
+  },
+]
+
+export const RERANKER_CATALOG = [
+  {
+    id: 'cross-encoder/ms-marco-MiniLM-L-6-v2',
+    label: 'ms-marco-MiniLM-L-6-v2',
+    description: 'Reranker ligero y rapido para baseline de cross-encoder.',
+    promptName: null,
+  },
+  {
+    id: 'BAAI/bge-reranker-base',
+    label: 'bge-reranker-base',
+    description: 'Reranker fuerte para calidad en top-k.',
+    promptName: null,
+  },
+  {
+    id: 'mixedbread-ai/mxbai-rerank-base-v1',
+    label: 'mxbai-rerank-base-v1',
+    description: 'Buen equilibrio entre latencia y relevancia en reranking.',
+    promptName: null,
+  },
 ]
 
 export const DEFAULT_DOCUMENTS_TEXT = `Parque movil por distrito en la ciudad de Madrid

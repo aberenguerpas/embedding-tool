@@ -45,6 +45,37 @@ Opcionalmente, define la URL base del backend en un `.env` del frontend:
 VITE_EMBEDDINGS_API_BASE_URL=http://localhost:8000
 ```
 
+## Desarrollo con Docker
+
+Requisitos:
+- Docker Engine + Docker Compose plugin.
+
+Levantar frontend y backend en modo desarrollo (con hot reload):
+
+```bash
+docker compose up --build
+```
+
+Servicios:
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+
+Detalles del setup:
+- El codigo fuente de frontend y backend se monta como volumen para recarga en caliente.
+- `frontend_node_modules` se guarda en un volumen nombrado.
+- `backend_models_cache` persiste la cache de modelos descargados.
+- El backend corre en CPU (`ST_DEVICE=cpu`) para desarrollo.
+- El frontend usa `/api` con proxy de Vite hacia el backend para evitar errores de red en el navegador.
+
+Comandos utiles:
+
+```bash
+docker compose up -d
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose down
+```
+
 ## Backend API
 
 - `GET /health`

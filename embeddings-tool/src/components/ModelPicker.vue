@@ -1,7 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
+  title: {
+    type: String,
+    default: 'Modelos',
+  },
   models: {
     type: Array,
     required: true,
@@ -10,10 +14,19 @@ const props = defineProps({
     type: Array,
     required: true,
   },
+  compact: {
+    type: Boolean,
+    default: false,
+  },
+  openRequestToken: {
+    type: Number,
+    default: 0,
+  },
 })
 
 const emit = defineEmits(['update:modelValue'])
 const searchText = ref('')
+const isOpen = ref(false)
 
 function toggleModel(modelId) {
   const selected = new Set(props.modelValue)
@@ -36,6 +49,10 @@ function selectAllModels() {
 
 function clearSelection() {
   emit('update:modelValue', [])
+}
+
+function toggleOpen() {
+  isOpen.value = !isOpen.value
 }
 
 function getModelKind(modelId) {
@@ -75,58 +92,135 @@ const filteredModels = computed(() => {
     return haystack.includes(query)
   })
 })
+
+const selectedPreview = computed(() => {
+  if (props.modelValue.length === 0) {
+    return 'Sin modelos seleccionados'
+  }
+
+  const labels = props.modelValue
+    .map((modelId) => props.models.find((model) => model.id === modelId)?.label ?? modelId)
+    .slice(0, 3)
+
+  if (props.modelValue.length > 3) {
+    return `${labels.join(', ')} +${props.modelValue.length - 3}`
+  }
+
+  return labels.join(', ')
+})
+
+watch(
+  () => props.openRequestToken,
+  () => {
+    isOpen.value = true
+  },
+)
 </script>
 
 <template>
-  <section class="panel model-panel">
-    <div class="panel-head">
-      <div>
-        <h2>Modelos</h2>
-        <p class="panel-description">Selecciona uno o varios para comparar ranking y latencia.</p>
-      </div>
-      <span class="count-pill">{{ modelValue.length }} seleccionados</span>
-    </div>
-
-    <div class="quick-actions">
-      <button type="button" class="quick-button" @click="selectAllModels">Seleccionar todos</button>
-      <button type="button" class="quick-button ghost" @click="clearSelection">Limpiar</button>
-    </div>
-
-    <label class="search-box">
-      <span>Filtrar modelos</span>
-      <input v-model="searchText" type="text" placeholder="miniLM, multilingual, msmarco..." />
-    </label>
-
-    <div class="model-grid">
-      <label
-        v-for="model in filteredModels"
-        :key="model.id"
-        :class="['model-card', { active: modelValue.includes(model.id) }]"
-      >
-        <input
-          :checked="modelValue.includes(model.id)"
-          type="checkbox"
-          @change="toggleModel(model.id)"
-        />
-        <div class="model-content">
-          <div class="model-row">
-            <strong>{{ model.label }}</strong>
-            <span class="kind-pill">{{ getModelKind(model.id) }}</span>
-          </div>
-          <p>{{ model.description }}</p>
-          <small>{{ model.id }}</small>
+  <section :class="['panel model-panel', { compact: compact }]">
+    <button class="dropdown-toggle" type="button" @click="toggleOpen">
+      <div class="panel-head">
+        <div>
+          <h2>{{ title }}</h2>
+          <p class="panel-description">{{ selectedPreview }}</p>
         </div>
+        <div class="toggle-meta">
+          <span class="count-pill">{{ modelValue.length }} seleccionados</span>
+          <span class="caret">{{ isOpen ? '▲' : '▼' }}</span>
+        </div>
+      </div>
+    </button>
+
+    <div v-if="isOpen" class="dropdown-content">
+      <div class="quick-actions">
+        <button type="button" class="quick-button" @click="selectAllModels">Seleccionar todos</button>
+        <button type="button" class="quick-button ghost" @click="clearSelection">Limpiar</button>
+      </div>
+
+      <label class="search-box">
+        <span>Filtrar modelos</span>
+        <input v-model="searchText" type="text" placeholder="miniLM, multilingual, msmarco..." />
       </label>
 
-      <p v-if="filteredModels.length === 0" class="empty-state">No hay modelos para ese filtro.</p>
+      <div class="model-grid">
+        <label
+          v-for="model in filteredModels"
+          :key="model.id"
+          :class="['model-card', { active: modelValue.includes(model.id) }]"
+        >
+          <input
+            :checked="modelValue.includes(model.id)"
+            type="checkbox"
+            @change="toggleModel(model.id)"
+          />
+          <div class="model-content">
+            <div class="model-row">
+              <strong>{{ model.label }}</strong>
+              <span class="kind-pill">{{ getModelKind(model.id) }}</span>
+            </div>
+            <p>{{ model.description }}</p>
+            <small>{{ model.id }}</small>
+          </div>
+        </label>
+
+        <p v-if="filteredModels.length === 0" class="empty-state">No hay modelos para ese filtro.</p>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
 .model-panel {
+  position: relative;
+  display: grid;
+  gap: 0.72rem;
+}
+
+.model-panel.compact {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  background: transparent;
+}
+
+.dropdown-toggle {
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-bg) 90%, white);
+  padding: 0.72rem;
+  text-align: left;
+}
+
+.model-panel.compact .dropdown-toggle {
+  background: color-mix(in srgb, var(--panel-bg) 88%, white);
+  padding: 0.54rem 0.62rem;
+}
+
+.dropdown-content {
+  position: absolute;
+  top: calc(100% + 0.38rem);
+  left: 0;
+  right: 0;
+  z-index: 30;
   display: grid;
   gap: 0.88rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 84%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-bg) 96%, white);
+  padding: 0.72rem;
+  box-shadow: 0 18px 28px -24px rgba(18, 46, 92, 0.6);
+}
+
+.toggle-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.caret {
+  font-size: 0.76rem;
+  color: var(--text-muted);
 }
 
 .panel-head {
@@ -141,10 +235,18 @@ h2 {
   font-size: 1.06rem;
 }
 
+.model-panel.compact h2 {
+  font-size: 0.88rem;
+}
+
 .panel-description {
   margin: 0.16rem 0 0;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+}
+
+.model-panel.compact .panel-description {
+  font-size: 0.75rem;
 }
 
 .count-pill {
@@ -156,6 +258,11 @@ h2 {
   font-size: 0.74rem;
   font-weight: 640;
   white-space: nowrap;
+}
+
+.model-panel.compact .count-pill {
+  font-size: 0.69rem;
+  padding: 0.16rem 0.42rem;
 }
 
 .quick-actions {
@@ -209,6 +316,13 @@ h2 {
 .model-grid {
   display: grid;
   gap: 0.64rem;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.model-panel.compact .model-grid {
+  max-height: 320px;
 }
 
 .model-card {
@@ -258,31 +372,26 @@ h2 {
 .model-content small {
   color: color-mix(in srgb, var(--text-muted) 88%, black 3%);
   font-size: 0.73rem;
-  font-family: 'Fira Code', 'SFMono-Regular', Menlo, monospace;
-  word-break: break-all;
 }
 
 .kind-pill {
   border-radius: 999px;
-  padding: 0.18rem 0.48rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 90%, white);
+  padding: 0.14rem 0.46rem;
   font-size: 0.68rem;
-  letter-spacing: 0.02em;
   text-transform: uppercase;
-  border: 1px solid color-mix(in srgb, var(--panel-border) 75%, transparent);
-  background: color-mix(in srgb, var(--panel-bg) 80%, white);
-}
-
-input[type='checkbox'] {
-  margin-top: 0.22rem;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .empty-state {
   margin: 0;
-  padding: 0.82rem;
-  border-radius: 10px;
   border: 1px dashed color-mix(in srgb, var(--panel-border) 75%, transparent);
+  border-radius: 10px;
+  padding: 0.65rem;
   color: var(--text-muted);
-  font-size: 0.82rem;
-  text-align: center;
+  font-size: 0.78rem;
 }
 </style>

@@ -1,5 +1,5 @@
-import { cosineSimilarity, embedTexts } from './embeddingProviders'
 import { average, buildOverlapMatrix } from './metrics'
+import { rerankDocuments } from './rerankProviders'
 
 function now() {
   if (typeof performance !== 'undefined' && performance.now) {
@@ -55,11 +55,7 @@ function computeNdcgAtK(rankedDocs, relevantDocIndexes, topK) {
     idcg += 1 / Math.log2(rank + 2)
   }
 
-  if (idcg === 0) {
-    return 0
-  }
-
-  return dcg / idcg
+  return idcg === 0 ? 0 : dcg / idcg
 }
 
 function buildWinRateMatrix(modelIds, perQueryMetricByModel) {
@@ -90,23 +86,19 @@ function buildWinRateMatrix(modelIds, perQueryMetricByModel) {
         }
       }
 
-      if (compared === 0) {
-        return 0
-      }
-
-      return (leftWins + ties * 0.5) / compared
+      return compared === 0 ? 0 : (leftWins + ties * 0.5) / compared
     }),
   )
 }
 
-export async function compareQueries({
+export async function compareRerankQueries({
   documents,
   queries,
   modelIds,
   topK,
-  minSimilarity = 0,
   baseUrl,
   relevanceByQuery,
+  candidateDocIndexesByQuery,
   onLog,
 }) {
   const hasRelevanceJudgments =
@@ -114,60 +106,13 @@ export async function compareQueries({
     relevanceByQuery.length === queries.length &&
     relevanceByQuery.some((entry) => entry?.size > 0)
 
-  const perModelData = {}
   const summaryAccumulator = {}
   const qualityAccumulator = {}
+  const perQueryMetricByModel = []
 
   for (const modelId of modelIds) {
-    onLog?.({
-      level: 'info',
-      message: `Iniciando calculo de embeddings para ${modelId}`,
-    })
-
-    const prepStart = now()
-    const documentVectors = await embedTexts({
-      texts: documents,
-      modelId,
-      baseUrl,
-    })
-    const prepLatencyMs = now() - prepStart
-    onLog?.({
-      level: 'info',
-      message: `Documentos embebidos para ${modelId} (${documentVectors.length}/${documents.length})`,
-    })
-
-    const queryEmbeddingStart = now()
-    const queryVectors = await embedTexts({
-      texts: queries,
-      modelId,
-      baseUrl,
-    })
-    const queryEmbeddingTotalMs = now() - queryEmbeddingStart
-    onLog?.({
-      level: 'info',
-      message: `Queries embebidas para ${modelId} (${queryVectors.length}/${queries.length})`,
-    })
-
-    if (documentVectors.length !== documents.length) {
-      throw new Error(
-        `Model ${modelId} returned ${documentVectors.length} doc embeddings for ${documents.length} docs.`,
-      )
-    }
-
-    if (queryVectors.length !== queries.length) {
-      throw new Error(
-        `Model ${modelId} returned ${queryVectors.length} query embeddings for ${queries.length} queries.`,
-      )
-    }
-
-    perModelData[modelId] = {
-      documentVectors,
-      queryVectors,
-      queryEmbeddingAvgMs: queryEmbeddingTotalMs / queries.length,
-    }
-
     summaryAccumulator[modelId] = {
-      prepLatencyMs,
+      prepLatencyMs: 0,
       latencies: [],
       topScores: [],
     }
@@ -177,47 +122,61 @@ export async function compareQueries({
       mrr: [],
       ndcg: [],
     }
-
-    onLog?.({
-      level: 'info',
-      message: `Modelo ${modelId} listo. Prep ${prepLatencyMs.toFixed(2)} ms.`,
-    })
   }
 
-  const perQueryMetricByModel = []
+  const resultsByQuery = []
 
-  const resultsByQuery = queries.map((queryText, queryIndex) => {
+  for (let queryIndex = 0; queryIndex < queries.length; queryIndex += 1) {
+    const queryText = queries[queryIndex]
     const rankingByModel = {}
     const metricByModel = {}
 
     for (const modelId of modelIds) {
-      const evalStart = now()
-      const queryVector = perModelData[modelId].queryVectors[queryIndex]
+      const hasCandidateSubset = Array.isArray(candidateDocIndexesByQuery?.[queryIndex])
+      const candidateIndexes = hasCandidateSubset
+        ? candidateDocIndexesByQuery[queryIndex]
+        : documents.map((_, index) => index)
+      const candidateDocs = candidateIndexes.map((docIndex) => documents[docIndex]).filter(Boolean)
 
-      if (!Array.isArray(queryVector)) {
-        throw new Error(`Missing query embedding for query ${queryIndex + 1} in model ${modelId}.`)
+      if (hasCandidateSubset && candidateDocs.length === 0) {
+        rankingByModel[modelId] = {
+          latencyMs: 0,
+          averageScore: 0,
+          rankedDocs: [],
+        }
+
+        if (hasRelevanceJudgments) {
+          const relevantDocIndexes = relevanceByQuery[queryIndex] ?? new Set()
+          const recallAtK = computeRecallAtK([], relevantDocIndexes, topK)
+          const mrrAtK = computeMrrAtK([], relevantDocIndexes, topK)
+          const ndcgAtK = computeNdcgAtK([], relevantDocIndexes, topK)
+          rankingByModel[modelId].quality = { recallAtK, mrrAtK, ndcgAtK }
+          qualityAccumulator[modelId].recall.push(recallAtK)
+          qualityAccumulator[modelId].mrr.push(mrrAtK)
+          qualityAccumulator[modelId].ndcg.push(ndcgAtK)
+          metricByModel[modelId] = ndcgAtK
+        } else {
+          metricByModel[modelId] = 0
+        }
+
+        summaryAccumulator[modelId].latencies.push(0)
+        continue
       }
 
-      const rankedDocs = documents
-        .map((document, docIndex) => {
-          const documentVector = perModelData[modelId].documentVectors[docIndex]
+      onLog?.({ level: 'info', message: `Reranking Q${queryIndex + 1} con ${modelId}` })
+      const start = now()
 
-          if (!Array.isArray(documentVector)) {
-            throw new Error(`Missing document embedding for doc ${docIndex + 1} in model ${modelId}.`)
-          }
+      const { rankedDocs, elapsedMs } = await rerankDocuments({
+        query: queryText,
+        documents: candidateDocs,
+        documentIndexes: candidateIndexes,
+        modelId,
+        baseUrl,
+        topK,
+      })
 
-          return {
-            docIndex,
-            document,
-            score: cosineSimilarity(queryVector, documentVector),
-          }
-        })
-        .sort((left, right) => right.score - left.score)
-        .filter((doc) => doc.score >= minSimilarity)
-        .slice(0, topK)
-
-      const rankingLatencyMs = now() - evalStart
-      const latencyMs = rankingLatencyMs + perModelData[modelId].queryEmbeddingAvgMs
+      const localElapsedMs = now() - start
+      const latencyMs = Math.max(elapsedMs, localElapsedMs)
       const averageScore = average(rankedDocs.map((doc) => doc.score))
 
       rankingByModel[modelId] = {
@@ -226,18 +185,18 @@ export async function compareQueries({
         rankedDocs,
       }
 
+      summaryAccumulator[modelId].latencies.push(latencyMs)
+      if (rankedDocs[0]) {
+        summaryAccumulator[modelId].topScores.push(rankedDocs[0].score)
+      }
+
       if (hasRelevanceJudgments) {
         const relevantDocIndexes = relevanceByQuery[queryIndex] ?? new Set()
         const recallAtK = computeRecallAtK(rankedDocs, relevantDocIndexes, topK)
         const mrrAtK = computeMrrAtK(rankedDocs, relevantDocIndexes, topK)
         const ndcgAtK = computeNdcgAtK(rankedDocs, relevantDocIndexes, topK)
 
-        rankingByModel[modelId].quality = {
-          recallAtK,
-          mrrAtK,
-          ndcgAtK,
-        }
-
+        rankingByModel[modelId].quality = { recallAtK, mrrAtK, ndcgAtK }
         qualityAccumulator[modelId].recall.push(recallAtK)
         qualityAccumulator[modelId].mrr.push(mrrAtK)
         qualityAccumulator[modelId].ndcg.push(ndcgAtK)
@@ -245,38 +204,28 @@ export async function compareQueries({
       } else {
         metricByModel[modelId] = averageScore
       }
-
-      summaryAccumulator[modelId].latencies.push(latencyMs)
-      if (rankedDocs[0]) {
-        summaryAccumulator[modelId].topScores.push(rankedDocs[0].score)
-      }
     }
 
     perQueryMetricByModel.push(metricByModel)
 
-    const overlapMatrix = buildOverlapMatrix(modelIds, rankingByModel, topK)
-
-    return {
+    resultsByQuery.push({
       queryId: `query-${queryIndex + 1}`,
       queryText,
       rankingByModel,
-      overlapMatrix,
-    }
-  })
+      overlapMatrix: buildOverlapMatrix(modelIds, rankingByModel, topK),
+    })
+  }
 
   const summaryByModel = modelIds.reduce((summary, modelId) => {
-    const modelSummary = summaryAccumulator[modelId]
-
     summary[modelId] = {
-      prepLatencyMs: modelSummary.prepLatencyMs,
-      avgLatencyMs: average(modelSummary.latencies),
-      avgTopScore: average(modelSummary.topScores),
+      prepLatencyMs: 0,
+      avgLatencyMs: average(summaryAccumulator[modelId].latencies),
+      avgTopScore: average(summaryAccumulator[modelId].topScores),
     }
 
     return summary
   }, {})
 
-  const winRateMatrix = buildWinRateMatrix(modelIds, perQueryMetricByModel)
   const evaluationByModel = hasRelevanceJudgments
     ? modelIds.reduce((evaluation, modelId) => {
       evaluation[modelId] = {
@@ -293,7 +242,7 @@ export async function compareQueries({
     resultsByQuery,
     summaryByModel,
     evaluationByModel,
-    winRateMatrix,
+    winRateMatrix: buildWinRateMatrix(modelIds, perQueryMetricByModel),
     winRateMetric: hasRelevanceJudgments ? 'ndcg@k' : 'avg top-k score',
   }
 }

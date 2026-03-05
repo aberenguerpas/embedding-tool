@@ -13,6 +13,13 @@ DEFAULT_MODELS = [
     'sentence-transformers/multi-qa-MiniLM-L6-cos-v1',
     'sentence-transformers/msmarco-distilbert-base-v4',
     'sentence-transformers/msmarco-MiniLM-L6-cos-v5',
+    'google/embeddinggemma-300m',
+]
+
+DEFAULT_RERANKER_MODELS = [
+    'cross-encoder/ms-marco-MiniLM-L-6-v2',
+    'BAAI/bge-reranker-base',
+    'mixedbread-ai/mxbai-rerank-base-v1',
 ]
 
 
@@ -53,8 +60,11 @@ class Settings:
     host: str
     port: int
     allowed_models: list[str]
+    allowed_rerankers: list[str]
     allow_dynamic_models: bool
+    allow_dynamic_rerankers: bool
     preload_on_startup: bool
+    preload_rerankers_on_startup: bool
     device: str
     cache_dir: str | None
     batch_size: int
@@ -66,8 +76,13 @@ def get_settings() -> Settings:
         host=os.getenv('BACKEND_HOST', '0.0.0.0'),
         port=parse_int(os.getenv('BACKEND_PORT'), 8000),
         allowed_models=parse_csv(os.getenv('ST_ALLOWED_MODELS'), DEFAULT_MODELS),
+        allowed_rerankers=parse_csv(os.getenv('ST_ALLOWED_RERANKERS'), DEFAULT_RERANKER_MODELS),
         allow_dynamic_models=parse_bool(os.getenv('ST_ALLOW_DYNAMIC_MODELS'), True),
+        allow_dynamic_rerankers=parse_bool(os.getenv('ST_ALLOW_DYNAMIC_RERANKERS'), True),
         preload_on_startup=parse_bool(os.getenv('ST_PRELOAD_ON_STARTUP'), False),
+        preload_rerankers_on_startup=parse_bool(
+            os.getenv('ST_PRELOAD_RERANKERS_ON_STARTUP'), False
+        ),
         device=os.getenv('ST_DEVICE', 'cpu'),
         cache_dir=(os.getenv('ST_CACHE_DIR') or '').strip() or None,
         batch_size=max(1, parse_int(os.getenv('ST_BATCH_SIZE'), 32)),

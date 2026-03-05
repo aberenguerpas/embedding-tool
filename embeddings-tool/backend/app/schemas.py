@@ -16,6 +16,12 @@ class ModelsResponse(BaseModel):
     statuses: list[ModelStatus]
 
 
+class RerankersResponse(BaseModel):
+    allowed_models: list[str]
+    loaded_models: list[str]
+    statuses: list[ModelStatus]
+
+
 class DownloadModelsRequest(BaseModel):
     model_ids: list[str] = Field(min_length=1)
     force_reload: bool = False
@@ -79,4 +85,65 @@ class EmbeddingsResponse(BaseModel):
     dimensions: int
     normalize_embeddings: bool
     embeddings: list[list[float]]
+    elapsed_ms: float
+
+
+class RerankRequest(BaseModel):
+    model_id: str = Field(min_length=1)
+    queries: list[str] = Field(min_length=1)
+    documents: list[str] = Field(min_length=1)
+    top_k: int | None = Field(default=None, ge=1)
+
+    @field_validator('model_id')
+    @classmethod
+    def validate_rerank_model_id(cls, value: str) -> str:
+        model_id = value.strip()
+        if not model_id:
+            raise ValueError('model_id cannot be empty')
+        return model_id
+
+    @field_validator('queries')
+    @classmethod
+    def validate_queries(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+
+        for value in values:
+            text = value.strip()
+            if not text:
+                raise ValueError('queries cannot contain empty values')
+            cleaned.append(text)
+
+        return cleaned
+
+    @field_validator('documents')
+    @classmethod
+    def validate_documents(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+
+        for value in values:
+            text = value.strip()
+            if not text:
+                raise ValueError('documents cannot contain empty values')
+            cleaned.append(text)
+
+        return cleaned
+
+
+class RerankResultDoc(BaseModel):
+    doc_index: int
+    document: str
+    score: float
+
+
+class RerankQueryResult(BaseModel):
+    query: str
+    ranked_docs: list[RerankResultDoc]
+
+
+class RerankResponse(BaseModel):
+    model_id: str
+    top_k: int
+    query_count: int
+    document_count: int
+    results: list[RerankQueryResult]
     elapsed_ms: float

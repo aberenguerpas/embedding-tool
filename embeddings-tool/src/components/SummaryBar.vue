@@ -12,6 +12,10 @@ defineProps({
     type: Object,
     required: true,
   },
+  evaluationByModel: {
+    type: Object,
+    default: null,
+  },
 })
 </script>
 
@@ -34,6 +38,18 @@ defineProps({
         <div>
           <dt>Top1 medio</dt>
           <dd>{{ summaryByModel[modelId].avgTopScore.toFixed(4) }}</dd>
+        </div>
+        <div v-if="evaluationByModel?.[modelId]">
+          <dt>Recall@k</dt>
+          <dd>{{ evaluationByModel[modelId].recallAtK.toFixed(4) }}</dd>
+        </div>
+        <div v-if="evaluationByModel?.[modelId]">
+          <dt>MRR@k</dt>
+          <dd>{{ evaluationByModel[modelId].mrrAtK.toFixed(4) }}</dd>
+        </div>
+        <div v-if="evaluationByModel?.[modelId]">
+          <dt>NDCG@k</dt>
+          <dd>{{ evaluationByModel[modelId].ndcgAtK.toFixed(4) }}</dd>
         </div>
       </dl>
     </article>

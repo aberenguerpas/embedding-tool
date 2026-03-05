@@ -23,7 +23,7 @@ const emit = defineEmits(['update:activeIndex'])
       @click="emit('update:activeIndex', index)"
     >
       <div class="query-head">
-        <span>{{ index === activeIndex ? '🐒' : 'Q' }}{{ index + 1 }}</span>
+        <span>Q{{ index + 1 }}</span>
         <small>{{ query.rankingByModel ? Object.keys(query.rankingByModel).length : 0 }} modelos</small>
       </div>
       <p>{{ query.queryText }}</p>

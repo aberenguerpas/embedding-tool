@@ -49,13 +49,13 @@ async function readResponsePayload(response) {
   }
 }
 
-export async function downloadModels({ baseUrl = DEFAULT_API_BASE_URL, modelIds, forceReload = false }) {
+export async function downloadRerankers({ baseUrl = DEFAULT_API_BASE_URL, modelIds, forceReload = false }) {
   let response
   let payload
 
   try {
     response = await fetchWithTimeout(
-      buildUrl(baseUrl, '/models/download'),
+      buildUrl(baseUrl, '/rerankers/download'),
       {
         method: 'POST',
         headers: {
@@ -71,41 +71,67 @@ export async function downloadModels({ baseUrl = DEFAULT_API_BASE_URL, modelIds,
 
     payload = await readResponsePayload(response)
   } catch (error) {
-    throw new Error(formatNetworkError(error, 'Model download request failed'), { cause: error })
+    throw new Error(formatNetworkError(error, 'Reranker download request failed'), { cause: error })
   }
 
   if (!response.ok) {
     const detail = payload?.detail ?? payload?.error ?? payload?.raw ?? 'Unknown backend error'
-    throw new Error(`Model download error (${response.status}): ${detail}`)
+    throw new Error(`Reranker download error (${response.status}): ${detail}`)
   }
 
   return payload
 }
 
-export async function checkBackendHealth({ baseUrl = DEFAULT_API_BASE_URL }) {
+export async function rerankDocuments({
+  query,
+  documents,
+  documentIndexes,
+  modelId,
+  baseUrl = DEFAULT_API_BASE_URL,
+  topK,
+}) {
   let response
   let payload
 
   try {
     response = await fetchWithTimeout(
-      buildUrl(baseUrl, '/health'),
+      buildUrl(baseUrl, '/rerank'),
       {
-        method: 'GET',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          model_id: modelId,
+          queries: [query],
+          documents,
+          top_k: topK,
+        }),
       },
-      10000,
+      DEFAULT_TIMEOUT_MS,
     )
 
     payload = await readResponsePayload(response)
   } catch (error) {
-    throw new Error(formatNetworkError(error, 'Backend health check failed'), { cause: error })
+    throw new Error(formatNetworkError(error, 'Rerank API request failed'), { cause: error })
   }
 
   if (!response.ok) {
-    throw new Error(`Backend health check failed (${response.status})`)
+    const detail = payload?.detail ?? payload?.error ?? payload?.raw ?? 'Unknown backend error'
+    throw new Error(`Rerank API error (${response.status}): ${detail}`)
   }
 
-  return payload?.status === 'ok'
+  const firstResult = payload?.results?.[0]
+  if (!firstResult || !Array.isArray(firstResult.ranked_docs)) {
+    throw new Error('Rerank API returned an invalid response payload.')
+  }
+
+  return {
+    rankedDocs: firstResult.ranked_docs.map((doc) => ({
+      docIndex: Array.isArray(documentIndexes) ? (documentIndexes[doc.doc_index] ?? doc.doc_index) : doc.doc_index,
+      document: doc.document,
+      score: doc.score,
+    })),
+    elapsedMs: Number(payload?.elapsed_ms ?? 0),
+  }
 }

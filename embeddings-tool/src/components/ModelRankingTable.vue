@@ -1,6 +1,4 @@
 <script setup>
-import { computed } from 'vue'
-
 const props = defineProps({
   modelLabel: {
     type: String,
@@ -10,35 +8,31 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  threshold: {
+    type: Number,
+    default: 0,
+  },
+  rankChangeByDocIndex: {
+    type: Object,
+    default: null,
+  },
 })
 
 function formatScore(score) {
   return score.toFixed(4)
 }
 
-const scoreRange = computed(() => {
-  const scores = props.result.rankedDocs.map((doc) => doc.score)
+function toUnitPercent(score) {
+  const boundedScore = Math.max(0, Math.min(1, score))
+  return boundedScore * 100
+}
 
-  if (scores.length === 0) {
-    return { min: 0, max: 0 }
-  }
+function rankChangeForDoc(docIndex) {
+  return props.rankChangeByDocIndex?.[docIndex] ?? null
+}
 
-  return {
-    min: Math.min(...scores),
-    max: Math.max(...scores),
-  }
-})
-
-function toRelativePercent(score) {
-  const minScore = scoreRange.value.min
-  const maxScore = scoreRange.value.max
-  const denominator = maxScore - minScore
-
-  if (denominator === 0) {
-    return 100
-  }
-
-  return ((score - minScore) / denominator) * 100
+function isBelowThreshold(score) {
+  return score < props.threshold
 }
 </script>
 
@@ -61,18 +55,36 @@ function toRelativePercent(score) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(doc, rank) in result.rankedDocs" :key="doc.docIndex">
+        <tr
+          v-for="(doc, rank) in result.rankedDocs"
+          :key="doc.docIndex"
+          :class="{ 'below-threshold': isBelowThreshold(doc.score) }"
+        >
           <td>
             <span :class="['rank-badge', { top: rank === 0 }]">
-              {{ rank === 0 ? `🍌${rank + 1}` : rank + 1 }}
+              {{ rank + 1 }}
             </span>
           </td>
-          <td>{{ doc.document }}</td>
+          <td>
+            <div class="doc-cell">
+              <span class="doc-text">{{ doc.document }}</span>
+              <span v-if="isBelowThreshold(doc.score)" class="filtered-pill">Filtrado por umbral</span>
+              <span
+                v-if="rankChangeForDoc(doc.docIndex)"
+                :class="['rank-move', rankChangeForDoc(doc.docIndex).movement]"
+              >
+                <span v-if="rankChangeForDoc(doc.docIndex).movement === 'up'">↑</span>
+                <span v-else-if="rankChangeForDoc(doc.docIndex).movement === 'down'">↓</span>
+                <span v-else>→</span>
+                {{ rankChangeForDoc(doc.docIndex).label }}
+              </span>
+            </div>
+          </td>
           <td>
             <div class="score-cell">
               <span>{{ formatScore(doc.score) }}</span>
               <div class="score-track">
-                <div class="score-fill" :style="{ width: `${toRelativePercent(doc.score)}%` }" />
+                <div class="score-fill" :style="{ width: `${toUnitPercent(doc.score)}%` }" />
               </div>
             </div>
           </td>
@@ -168,6 +180,46 @@ th:last-child {
   background: linear-gradient(135deg, #ffe8a3, #ffd067);
 }
 
+.doc-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  flex-wrap: wrap;
+}
+
+.doc-text {
+  overflow-wrap: anywhere;
+}
+
+.rank-move {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  padding: 0.08rem 0.34rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.rank-move.up {
+  border-color: color-mix(in srgb, #1f9a69 48%, var(--panel-border));
+  color: #0f6a48;
+  background: color-mix(in srgb, #1f9a69 12%, white);
+}
+
+.rank-move.down {
+  border-color: color-mix(in srgb, #cf4747 52%, var(--panel-border));
+  color: #8a2d2d;
+  background: color-mix(in srgb, #cf4747 10%, white);
+}
+
+.rank-move.same {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--panel-bg) 84%, white);
+}
+
 .score-cell {
   display: grid;
   gap: 0.26rem;
@@ -189,5 +241,30 @@ th:last-child {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #ff9d57, #1f996b);
+}
+
+tbody tr.below-threshold {
+  opacity: 0.45;
+  filter: grayscale(0.9);
+}
+
+tbody tr.below-threshold .score-fill {
+  background: linear-gradient(90deg, #9aa7ba, #9aa7ba);
+}
+
+tbody tr.below-threshold .rank-badge {
+  border-style: dashed;
+}
+
+.filtered-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--danger) 46%, var(--panel-border));
+  border-radius: 999px;
+  padding: 0.08rem 0.34rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #8a2d2d;
+  background: color-mix(in srgb, var(--danger) 10%, white);
 }
 </style>
